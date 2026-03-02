@@ -206,4 +206,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  // Fonction pour marquer le ramassage comme terminé dans Firestore
+  Future<void> _validerCollecte(String foyerId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('foyers')
+          .doc(foyerId)
+          .update({'statut': 'termine'}); // On change le statut de 'en_attente' à 'termine'
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Collecte validée avec succès !"), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      debugPrint("Erreur lors de la validation : $e");
+    }
+  }
 }
