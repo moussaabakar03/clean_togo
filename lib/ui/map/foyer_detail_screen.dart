@@ -145,41 +145,4 @@ class _FoyerDetailScreenState extends State<FoyerDetailScreen> {
       print("Erreur Firebase: $e");
     }
   }
-/*
-  void _validerPassage() async {
-    try {
-      // Afficher un indicateur de chargement
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-
-      // Récupérer la position réelle
-      Position position = await LocationService.determinePosition();
-
-      Navigator.pop(context); // Fermer le chargement
-
-      setState(() {
-        _isCollected = true;
-      });
-
-      // Simulation de ce qu'on enverra à Firebase
-      print("Collecte validée !");
-      print("Coordonnées : Lat: ${position.latitude}, Long: ${position.longitude}");
-      print("Heure : ${DateTime.now()}");
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Validé à : ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}"),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      Navigator.pop(context); // Fermer le chargement
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur GPS : $e"), backgroundColor: Colors.red),
-      );
-    }
-  }*/
 }

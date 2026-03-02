@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "71379184808",
+    "project_id": "cleantogo-95163",
+    "storage_bucket": "cleantogo-95163.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:71379184808:android:31d896aac3d38ebe3ae69d",
+        "android_client_info": {
+          "package_name": "com.example.clean_togo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDym_3UEYBU1YTzgWq1tN7ZUXYdtNoDxm0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

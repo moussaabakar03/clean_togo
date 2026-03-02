@@ -1,7 +1,9 @@
 import 'package:clean_togo/ui/auth/login_screen.dart';
 import 'package:clean_togo/ui/history/history_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart'; // N'oublie pas le flutter pub add url_launcher
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -11,229 +13,196 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  // État pour savoir si la tournée a commencé
   bool _isTourneeLancee = false;
+  String _userName = "Chargement...";
+  String _userQuartier = "Lomé, Togo";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  // Récupère les infos du profil (Nom/Quartier)
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      var doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (doc.exists && mounted) {
+        setState(() {
+          _userName = doc.get('nom') ?? "Chauffeur";
+          _userQuartier = doc.get('quartier') ?? "Lomé, Togo";
+        });
+      }
+    }
+  }
+
+  // Fonction pour ouvrir Google Maps avec une adresse texte
+  Future<void> _ouvrirItineraire(String adresse) async {
+    final url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(adresse)}");
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E7E44),
-        title: const Text("Tournée du jour", style: TextStyle(color: Colors.white)),
+        title: const Text("Clean Togo", style: TextStyle(color: Colors.white)),
         centerTitle: true,
-        elevation: 0,
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Color(0xFF1E7E44)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person, color: Color(0xFF1E7E44))),
-                  SizedBox(height: 10),
-                  Text("Chauffeur Pro", style: TextStyle(color: Colors.white, fontSize: 18)),
-                  Text("Lomé, Togo", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.dashboard),
-              title: const Text("Tournée du jour"),
-              onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text("Mon Historique"),
-              onTap: () {
-                Navigator.pop(context); // Ferme le menu
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const HistoryScreen()));
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text("Déconnexion"),
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (BuildContext context) {
-                    return AlertDialog(
-                      title: const Text("Déconnexion"),
-                      content: const Text("Voulez-vous vraiment vous déconnecter ?"),
-                      actions: [
-                        TextButton(
-                          child: const Text("Annuler"),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        TextButton(
-                          child: const Text("Oui, quitter", style: TextStyle(color: Colors.red)),
-                          onPressed: () async {
-                            await FirebaseAuth.instance.signOut();
-                            if (context.mounted) {
-                              Navigator.pushAndRemoveUntil(
-                                context,
-                                MaterialPageRoute(builder: (context) => LoginScreen()),
-                                    (route) => false,
-                              );
-                            }
-                          },
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            // 1. Carte grise : Résumé des foyers
-            _buildSummaryCard(),
+      drawer: _buildDrawer(),
+      body: StreamBuilder<QuerySnapshot>(
+        // ON CHERCHE LA COURSE DU CHAUFFEUR
+        stream: FirebaseFirestore.instance
+            .collection('courses')
+            .where('chauffeurId', isEqualTo: uid)
+            .snapshots(),
+        builder: (context, courseSnapshot) {
+          if (!courseSnapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-            const SizedBox(height: 20),
+          // Si aucune course n'est trouvée pour ce chauffeurId
+          if (courseSnapshot.data!.docs.isEmpty) {
+            return _buildPasDeTache();
+          }
 
-            // 2. Zone de suivi (Conditionnelle)
-            if (_isTourneeLancee)
-              _buildTrackingCard()
-            else
-              _buildEmptyState(),
+          // On récupère le secteur de la première course trouvée
+          var courseData = courseSnapshot.data!.docs.first;
+          String secteurNom = courseData['secteur'];
 
-            const SizedBox(height: 40),
-
-            // 3. Bouton principal en bas
-            if (!_isTourneeLancee) _buildStartButton(),
-          ],
-        ),
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                _buildHeaderStats(secteurNom),
+                const SizedBox(height: 20),
+                if (_isTourneeLancee)
+                  _buildListeFoyers(secteurNom)
+                else
+                  _buildEcranAttente(),
+                const SizedBox(height: 30),
+                if (!_isTourneeLancee) _buildBoutonAction("Démarrer la tournée", () {
+                  setState(() => _isTourneeLancee = true);
+                }),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  // --- COMPOSANTS UI ---
+  // --- BLOCS DE CONSTRUCTION UI ---
 
-  Widget _buildSummaryCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.home_work_outlined, color: Colors.black54),
-          SizedBox(width: 10),
-          Text(
-            "Foyers à visiter : 12",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+  // Affiche le nombre de foyers en attente dans le secteur
+  Widget _buildHeaderStats(String secteur) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('foyers')
+          .where('secteur', isEqualTo: secteur)
+          .where('statut', isEqualTo: 'en_attente')
+          .snapshots(),
+      builder: (context, snapshot) {
+        int nb = snapshot.hasData ? snapshot.data!.docs.length : 0;
+        return Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(10)),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.location_on, color: Color(0xFF1E7E44)),
+              Text(" Secteur $secteur : $nb foyers", style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildEmptyState() {
-    return Column(
+  // Liste réelle des foyers récupérés par ton collègue
+  Widget _buildListeFoyers(String secteur) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('foyers')
+          .where('secteur', isEqualTo: secteur)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Text("Chargement des foyers...");
+        var docs = snapshot.data!.docs;
+
+        return Column(
+          children: docs.map((foyer) {
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: ListTile(
+                leading: const Icon(Icons.home, color: Color(0xFF1E7E44)),
+                title: Text(foyer['nom']),
+                subtitle: Text(foyer['adresse']),
+                trailing: IconButton(
+                  icon: const Icon(Icons.map, color: Colors.blue),
+                  onPressed: () => _ouvrirItineraire(foyer['adresse']),
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildEcranAttente() {
+    return const Column(
       children: [
-        const SizedBox(height: 50),
-        Icon(Icons.local_shipping_outlined, size: 80, color: Colors.grey[400]),
-        const SizedBox(height: 10),
-        Text(
-          "Aucune tournée en cours.\nAppuyez sur démarrer pour commencer.",
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey[600]),
-        ),
+        SizedBox(height: 40),
+        Icon(Icons.local_shipping, size: 100, color: Colors.grey),
+        Text("Prêt pour la collecte ?", style: TextStyle(fontSize: 18, color: Colors.grey)),
       ],
     );
   }
 
-  Widget _buildTrackingCard() {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.blue.shade300, width: 2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            color: Colors.blue.shade700,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: const Text(
-              "Suivi du Camion de Collecte",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ),
-          // Placeholder Map
-          Container(
-            height: 180,
-            width: double.infinity,
-            color: Colors.grey[200],
-            child: const Icon(Icons.map_rounded, size: 60, color: Colors.blueGrey),
-          ),
-          // Infos
-          _infoRow("Position Actuelle:", "Tokoin Wuiti"),
-          _infoRow("Heures de Passage:", "08:15 - 09:00"),
-          _infoRow("Points Collectés:", "12 Ramassages"),
-
-          Padding(
-            padding: const EdgeInsets.all(10.0),
-            child: ElevatedButton(
-              onPressed: () {
-                // Action pour marquer la collecte (iPhone 17-11)
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E7E44),
-                minimumSize: const Size(double.infinity, 40),
-              ),
-              child: const Text("Marquer Collecte", style: TextStyle(color: Colors.white)),
-            ),
-          ),
-        ],
-      ),
+  Widget _buildPasDeTache() {
+    return const Center(
+      child: Text("Aucun secteur ne vous est assigné pour le moment."),
     );
   }
 
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          Text(value, style: const TextStyle(fontSize: 14)),
-          const Divider(height: 10),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStartButton() {
+  Widget _buildBoutonAction(String label, VoidCallback action) {
     return SizedBox(
       width: double.infinity,
-      height: 55,
+      height: 50,
       child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF1E7E44),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-        onPressed: () {
-          setState(() {
-            _isTourneeLancee = true;
-          });
-        },
-        child: const Text(
-          "Démarrer une tournée",
-          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E7E44)),
+        onPressed: action,
+        child: Text(label, style: const TextStyle(color: Colors.white)),
+      ),
+    );
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: Column(
+        children: [
+          UserAccountsDrawerHeader(
+            decoration: const BoxDecoration(color: Color(0xFF1E7E44)),
+            accountName: Text(_userName),
+            accountEmail: Text(_userQuartier),
+            currentAccountPicture: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person)),
+          ),
+          ListTile(leading: const Icon(Icons.history), title: const Text("Historique"), onTap: () {}),
+          const Spacer(),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text("Déconnexion"),
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+              if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()));
+            },
+          ),
+        ],
       ),
     );
   }

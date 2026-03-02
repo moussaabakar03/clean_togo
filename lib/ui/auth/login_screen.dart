@@ -1,5 +1,7 @@
-import 'package:clean_togo/ui/auth/register_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:clean_togo/ui/dashboard/dashboard_screen.dart';
+import 'package:clean_togo/ui/auth/register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -7,23 +9,69 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  String selectedRole = 'Chauffeur'; // Rôle par défaut selon ta maquette
+  // 1. Contrôleurs pour récupérer la saisie
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  String selectedRole = 'Chauffeur';
+  bool _isLoading = false;
+
+  // 2. Fonction de connexion Firebase
+  Future<void> _login() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      _showError("Veuillez remplir tous les champs.");
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Tentative de connexion
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      // Si réussi, on va au Dashboard et on vide la pile de navigation
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const DashboardScreen()),
+              (route) => false,
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      // Gestion des erreurs spécifiques (mauvais mot de passe, email inconnu, etc.)
+      String message = "Une erreur est survenue";
+      if (e.code == 'user-not-found') message = "Aucun utilisateur trouvé pour cet email.";
+      else if (e.code == 'wrong-password') message = "Mot de passe incorrect.";
+      else if (e.code == 'invalid-email') message = "Format d'email invalide.";
+
+      _showError(message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFC1FFB1), // Le vert clair du fond
+      backgroundColor: const Color(0xFFC1FFB1),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20.0),
           child: Column(
             children: [
-              // Logo Clean Togo (Placeholder)
               const Icon(Icons.recycling, size: 80, color: Color(0xFF006D32)),
               const Text("Clean Togo", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF006D32))),
               const SizedBox(height: 30),
 
-              // Carte blanche de connexion
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -32,36 +80,41 @@ class _LoginScreenState extends State<LoginScreen> {
                   boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
                 ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Center(child: Text("Connectez vous", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600))),
+                    const Text("Connectez-vous", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 20),
-                    _buildTextField(Icons.email_outlined, "Adresse Mail", "exemple@gmail.com"),
+
+                    // Email
+                    _buildTextField(Icons.email_outlined, "Adresse Mail", "exemple@gmail.com", _emailController),
                     const SizedBox(height: 15),
-                    _buildTextField(Icons.lock_outline, "Mot de passe", "..........", isObscure: true),
+
+                    // Password
+                    _buildTextField(Icons.lock_outline, "Mot de passe", "••••••••", _passwordController, isObscure: true),
                     const SizedBox(height: 20),
 
-                    const Text("En tant que :", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    const SizedBox(height: 10),
                     _buildRoleSelector(),
-
                     const SizedBox(height: 30),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      //onPressed: () => _login(),
-                      onPressed: () => {},
-                      child: const Text("Se connecter"),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text("Vous n'avez de compte ? ", style: TextStyle(fontSize: 12)),
-                        GestureDetector(
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => RegisterScreen())),
-                          child: const Text("S'inscrire", style: TextStyle(color: Color(0xFF1E7E44), fontWeight: FontWeight.bold, fontSize: 12)),
+
+                    // Bouton de connexion avec indicateur de chargement
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E7E44),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                      ],
+                        onPressed: _isLoading ? null : _login,
+                        child: _isLoading
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text("Se connecter", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+                    GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => RegisterScreen())),
+                      child: const Text("Pas de compte ? S'inscrire", style: TextStyle(color: Color(0xFF1E7E44), fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -73,35 +126,33 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Widget pour les champs de saisie
-  Widget _buildTextField(IconData icon, String label, String hint, {bool isObscure = false}) {
+  Widget _buildTextField(IconData icon, String label, String hint, TextEditingController controller, {bool isObscure = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(children: [Icon(icon, size: 18), const SizedBox(width: 5), Text(label)]),
         TextField(
+          controller: controller,
           obscureText: isObscure,
-          decoration: InputDecoration(hintText: hint, contentPadding: const EdgeInsets.symmetric(vertical: 5)),
+          decoration: InputDecoration(hintText: hint),
         ),
       ],
     );
   }
 
-  // Sélecteur de rôle stylisé
   Widget _buildRoleSelector() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: ['client', 'Chauffeur', 'Admin'].map((role) {
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: ['Client', 'Chauffeur', 'Admin'].map((role) {
         bool isSelected = selectedRole == role;
         return ChoiceChip(
           label: Text(role),
           selected: isSelected,
           onSelected: (val) => setState(() => selectedRole = role),
-          selectedColor: const Color(0xFF3498DB), // Bleu comme sur ta maquette
+          selectedColor: const Color(0xFF3498DB),
           labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
         );
       }).toList(),
     );
   }
 }
-
