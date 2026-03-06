@@ -1,7 +1,11 @@
+import 'package:clean_togo/service/api_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:clean_togo/ui/dashboard/dashboard_screen.dart';
 import 'package:clean_togo/ui/auth/register_screen.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -16,8 +20,38 @@ class _LoginScreenState extends State<LoginScreen> {
   String selectedRole = 'Chauffeur';
   bool _isLoading = false;
 
-  // 2. Fonction de connexion Firebase
+  // Remplace ton _login()
   Future<void> _login() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/auth/authenticate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "email": _emailController.text.trim(),
+          "password": _passwordController.text.trim(),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        String token = data['token']; // Récupère le token renvoyé par Spring Security
+
+        // STOCKER LE TOKEN (ex: avec flutter_secure_storage)
+        // await storage.write(key: 'jwt', value: token);
+
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const DashboardScreen()), (route) => false);
+      } else {
+        _showError("Email ou mot de passe incorrect.");
+      }
+    } catch (e) {
+      _showError("Erreur de connexion serveur.");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+  // 2. Fonction de connexion Firebase
+  /*Future<void> _login() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       _showError("Veuillez remplir tous les champs.");
       return;
@@ -51,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
+  }*/
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -90,9 +124,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     // Password
                     _buildTextField(Icons.lock_outline, "Mot de passe", "••••••••", _passwordController, isObscure: true),
-                    const SizedBox(height: 20),
+                    //const SizedBox(height: 20),
 
-                    _buildRoleSelector(),
+                    //_buildRoleSelector(),
                     const SizedBox(height: 30),
 
                     // Bouton de connexion avec indicateur de chargement
@@ -140,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildRoleSelector() {
+  /*Widget _buildRoleSelector() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: ['Client', 'Chauffeur', 'Admin'].map((role) {
@@ -154,5 +188,5 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }).toList(),
     );
-  }
+  }*/
 }

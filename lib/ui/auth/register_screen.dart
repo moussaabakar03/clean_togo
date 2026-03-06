@@ -1,3 +1,4 @@
+import 'package:clean_togo/service/api_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -19,8 +20,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // ... imports existants ...
 
-  // 2. Fonction d'inscription Firebase modifiée
+  // Remplace ton contenu actuel dans _register()
   Future<void> _register() async {
+    setState(() => _isLoading = true);
+    try {
+      final userData = {
+        "nom": _nomController.text.trim(),
+        "prenom": "", // Ajoute un champ prénom si nécessaire
+        "email": _emailController.text.trim(),
+        "phone": _phoneController.text.trim(),
+        "password": _passwordController.text.trim(),
+        "role": "CHAUFFEUR", // Ou dynamique
+        "statut": true
+      };
+
+      await ApiService.register(userData); // Appel à ton backend Spring Boot
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Inscription réussie !")));
+      }
+    } catch (e) {
+      _showError(e.toString());
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+  // 2. Fonction d'inscription Firebase modifiée
+  /*Future<void> _register() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       _showError("Veuillez remplir les champs obligatoires.");
       return;
@@ -60,7 +87,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
+  }*/
 
   @override
   Widget build(BuildContext context) {
